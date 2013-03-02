@@ -259,9 +259,9 @@ Value createrawtransaction(const Array& params, bool fHelp)
         if (!address.IsValid())
             throw JSONRPCError(-5, string("Invalid Bitcoin address:")+s.name_);
 
-        if (setAddress.count(address))
-            throw JSONRPCError(-8, string("Invalid parameter, duplicated address: ")+s.name_);
-        setAddress.insert(address);
+        if (!setAddress.count(address))
+            //throw JSONRPCError(-8, string("Invalid parameter, duplicated address: ")+s.name_);
+            setAddress.insert(address);
 
         CScript scriptPubKey;
         scriptPubKey.SetDestination(address.Get());
