@@ -1097,6 +1097,9 @@ unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
 unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
     int64 block_durations[2160];
     float alpha = 0.09; // closer to 1.0 = faster response to new values
+    if (pindexLast->nHeight > 110322) {
+        alpha = 0.06;
+    }
     float accumulator = 120;
     const int64 perBlockTargetTimespan = 120; // two mins between blocks
 
@@ -1104,14 +1107,15 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     if (pindexLast == NULL)
         return nProofOfWorkLimit;
 
-    // If the new block's timestamp is more than 20 minutes
-    // have to be greater than the max accepted time delta ; 15mins.
+    // If last block was found more than 20mins ago:
+    // (have to be greater than the max accepted time delta ; 15mins)
+    // then allow mining of a min-difficulty block for testnet,
+    // and a lower diff otherwise.
+    //
     // this way, if one would artificially increase block nTime to its max value,
     // we'd still take the 5mins periods without block before allowing a one-shot
     // diff decrase, later keeping the block time used for ema computation.
     //
-    // then allow mining of a min-difficulty block for testnet,
-    // and a lower diff otherwise:
     if (pblock->nTime > pindexLast->nTime + perBlockTargetTimespan*10) {
         if (fTestNet) {
             printf("TESTNET: allowing min-difficulty mining.\n");
@@ -1155,6 +1159,20 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     const CBlockIndex* pindexFirst = pindexLast;
     for (int i = 0; pindexFirst && i < 2160 ; i++) {
         block_durations[2159 - i] = pindexFirst->GetBlockTime() - pindexFirst->pprev->GetBlockTime();
+
+        if (pindexLast->nHeight > 110322) {
+            // slow down difficulty decrease even more,
+            // also limit the effect of future nTime values (actually annihilates them):
+            if (block_durations[2159 - i] > (1.5 * perBlockTargetTimespan) ) {
+                block_durations[2159 - i] = 1.5 * perBlockTargetTimespan;
+            }
+
+            // slow down difficulty increase:
+            if ((block_durations[2159 - i] >= 0) && (block_durations[2159 - i] < (perBlockTargetTimespan / 2)) ) {
+                block_durations[2159 - i] = perBlockTargetTimespan / 2;
+            }
+        }
+
         if (block_durations[2159 - i] < 0 && pindexLast->nHeight > 104290) {
             // attempts at increasing ntime to its max value,
             // currently eliminated by averaging, but with low net speed,
@@ -1190,8 +1208,16 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
 
     if (nActualTimespan < perBlockTargetTimespan / 2)
         nActualTimespan = perBlockTargetTimespan / 2;
-    if (nActualTimespan > perBlockTargetTimespan * 4)
-        nActualTimespan = perBlockTargetTimespan * 4;
+    if (pindexLast->nHeight > 110322) {
+        // symetrical adjustments, both sides:
+        if (nActualTimespan > perBlockTargetTimespan * 2) {
+            nActualTimespan = perBlockTargetTimespan * 2;
+        }
+    } else {
+        if (nActualTimespan > perBlockTargetTimespan * 4) {
+            nActualTimespan = perBlockTargetTimespan * 4;
+        }
+    }
 
     // Retarget
     CBigNum bnNew;
@@ -1199,7 +1225,7 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     bnNew *= nActualTimespan;
     bnNew /= perBlockTargetTimespan;
 
-    // super ugly way to never, ever return diff < 5254:
+    // temporary, super ugly way to never, ever return diff < 5254:
     if (pindexLast->nHeight > 104290) {
         CBigNum fiveThousandsLimit;
         fiveThousandsLimit.SetCompact(0x1b0c7898);
@@ -3392,8 +3418,13 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         // ban known bitcoin pools ip addresses, in case one of them want (again) to
         // take alt chains out of the game:
-        // TODO use something nicer than this ugly test:
-        // 23.21.225.111 = mining.eligius.st
+        // NOTE: absolutely nothing indicates any of those famous people/pools were
+        // involved in anything, this was an earlier preventive measure, mostly useless for
+        // many reasons (ipv6, changed netblocks, ...)
+        //
+        // TODO remove this :p
+        // 23.21.225.111 = mining.eligius.st / http://aws-portal.amazon.com/gp/aws/html-forms-controller/contactus/AWSAbuse
+        // 78.47.187.248 - 78.47.187.255 'Eligius Pool' / 'abuse@hetzner.de'
         // 176.31.157.133 = slush
         // 46.4.121.120 = deepbit
         // 50.31.149 = btcguild
@@ -3402,6 +3433,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // 62.113.214 192.198.93 59.167.117 = ozcoin
         // 72.135.241.30 = big fake blocks from here
         if (boost::algorithm::starts_with(pfrom->addr.ToString(), "23.21.225")
+                || boost::algorithm::starts_with(pfrom->addr.ToString(), "78.47.187")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "176.31.157")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "46.4.121")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "50.31.149")
@@ -3415,7 +3447,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "72.135.241"))
         {
             pfrom->Misbehaving(100);
-            //printf("Banned remote node from addr=%s ; known terracoin pool.\n", pfrom->addr.ToString().c_str());
+            //printf("Banned remote node from addr=%s ; known btc pool.\n", pfrom->addr.ToString().c_str());
             return (false);
         }
 
