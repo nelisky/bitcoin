@@ -23,6 +23,7 @@ public:
 
     // Add a key to the store.
     virtual bool AddKey(const CKey& key) =0;
+    virtual bool AddKey(const CKeyID& address) =0;
 
     // Check whether a key corresponding to a given address is present in the store.
     virtual bool HaveKey(const CKeyID &address) const =0;
@@ -57,6 +58,7 @@ protected:
 
 public:
     bool AddKey(const CKey& key);
+    bool AddKey(const CKeyID& address);
     bool HaveKey(const CKeyID &address) const
     {
         bool result;
@@ -148,6 +150,7 @@ public:
 
     virtual bool AddCryptedKey(const CPubKey &vchPubKey, const std::vector<unsigned char> &vchCryptedSecret);
     bool AddKey(const CKey& key);
+    bool AddKey(const CKeyID& address);
     bool HaveKey(const CKeyID &address) const
     {
         {

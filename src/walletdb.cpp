@@ -302,6 +302,17 @@ int CWalletDB::LoadWallet(CWallet* pwallet)
                     return DB_CORRUPT;
                 }
             }
+            else if (strType == "address")
+            {
+                CKeyID address;
+                ssKey >> address;
+                if (!pwallet->LoadAddress(address))
+                {
+                    printf("Error reading wallet database: LoadKey failed on address");
+                    return DB_CORRUPT;
+                }
+            }
+
         }
         pcursor->close();
     }

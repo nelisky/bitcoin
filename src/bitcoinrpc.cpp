@@ -47,6 +47,7 @@ extern Value getconnectioncount(const Array& params, bool fHelp); // in rpcnet.c
 extern Value getpeerinfo(const Array& params, bool fHelp);
 extern Value dumpprivkey(const Array& params, bool fHelp); // in rpcdump.cpp
 extern Value importprivkey(const Array& params, bool fHelp);
+extern Value importaddress(const Array& params, bool fHelp);
 extern Value getrawtransaction(const Array& params, bool fHelp); // in rcprawtransaction.cpp
 extern Value listunspent(const Array& params, bool fHelp);
 extern Value createrawtransaction(const Array& params, bool fHelp);
@@ -2370,6 +2371,7 @@ static const CRPCCommand vRPCCommands[] =
     { "listsinceblock",         &listsinceblock,         false },
     { "dumpprivkey",            &dumpprivkey,            false },
     { "importprivkey",          &importprivkey,          false },
+    { "importaddress",          &importaddress,          false },
     { "listunspent",            &listunspent,            false },
     { "getrawtransaction",      &getrawtransaction,      false },
     { "createrawtransaction",   &createrawtransaction,   false },
