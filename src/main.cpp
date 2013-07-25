@@ -1128,11 +1128,12 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
             if (pindexLast->nHeight> 101631 && pindexLast->nHeight < 103791) {
                 //insane difficulty drop ; until the network gets big enough, and not abused anymore
                 bnNew *= 10;
-            } else {
+            } else if (pindexLast->nHeight < 175000) {
                 // half the last diff, sucks too, but with a big enough network,
                 // no block should take 20 minutes to be mined!
-                // will be updated/removed in the future
+                // (disabled after block 175000)
                 bnNew *= 2;
+                printf("RETARGET: artificially lowered diff ; hard time mining current block...\n");
             }
 
             // super ugly way to never, ever return diff < 5254:
@@ -1147,7 +1148,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
             if (bnNew > bnProofOfWorkLimit)
                 bnNew = bnProofOfWorkLimit;
 
-            printf("RETARGET: artificially lowered diff ; hard time mining current block...\n");
             printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
             printf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
