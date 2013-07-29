@@ -97,7 +97,7 @@ namespace Checkpoints
         1366364155, // * UNIX timestamp of last checkpoint block
         209955,     // * total number of transactions between genesis and last checkpoint
                     //   (the tx=... number in the SetBestChain debug.log lines)
-        2500.0      // * estimated number of transactions per day after checkpoint
+        1500.0      // * estimated number of transactions per day after checkpoint
     };
 
     static MapCheckpoints mapCheckpointsTestnet =

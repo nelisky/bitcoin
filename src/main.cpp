@@ -1115,12 +1115,13 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     // this way, if one would artificially increase block nTime to its max value,
     // we'd still take the 5mins periods without block before allowing a one-shot
     // diff decrase, later keeping the block time used for ema computation.
+    // (disabled after block 175000)
     //
     if (pblock->nTime > pindexLast->nTime + perBlockTargetTimespan*10) {
         if (fTestNet) {
             printf("TESTNET: allowing min-difficulty mining.\n");
             return nProofOfWorkLimit;
-        } else {
+        } else if (pindexLast->nHeight < 175000) {
             // livenet ; will allow diff/2 unless exiting from apr 9th 2013 stalled state:
             CBigNum bnNew;
             bnNew.SetCompact(pindexLast->nBits);
@@ -1131,8 +1132,8 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
             } else {
                 // half the last diff, sucks too, but with a big enough network,
                 // no block should take 20 minutes to be mined!
-                // will be updated/removed in the future
                 bnNew *= 2;
+                printf("RETARGET: artificially lowered diff ; hard time mining current block...\n");
             }
 
             // super ugly way to never, ever return diff < 5254:
@@ -1147,7 +1148,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
             if (bnNew > bnProofOfWorkLimit)
                 bnNew = bnProofOfWorkLimit;
 
-            printf("RETARGET: artificially lowered diff ; hard time mining current block...\n");
             printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
             printf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
