@@ -3432,6 +3432,24 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
         // 176.9.104 = bitminter
         // 62.113.214 192.198.93 59.167.117 = ozcoin
         // 72.135.241.30 = big fake blocks from here
+        //
+        // 211.147.7.16 211.147.7.14 : f2pool.com sent ALL blocks 175108 -> 175120
+        // with ntime altered the same way it was during july2013 attack,
+        // generating blocks to an address associated to the huge amount of
+        // "overmined" blocks : 13kfKR1BS9gtsxppMeqDTx4rAvbwWjvYSL
+        // pool announce thread: https://bitcointalk.org/index.php?topic=195794.0
+        // author: "maomao"
+        // 211.147.4.0 - 211.147.7.255
+        // netblock owner:
+        // Justin Yang - No.18 Xibahe Dongli,Chaoyang District ,Beijing P.R.C. - CN
+        // BeiJing wanglianxuntong Telecom Technology Co.,Ltd
+        // Build 2-306,No.32 South of Zhongguancun Street
+        // haidian District, Beijing, China
+        // phone:          +86-10-65661862
+        // superxi@bj.datadragon.net
+        // ... investigating logfiles from last week abuse, for a match.
+        // contacting hosting provider, will later contact f2pool.com owner.
+        //
         if (boost::algorithm::starts_with(pfrom->addr.ToString(), "23.21.225")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "78.47.187")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "176.31.157")
@@ -3444,7 +3462,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "62.113.214")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "192.198.93")
                 || boost::algorithm::starts_with(pfrom->addr.ToString(), "59.167.117")
-                || boost::algorithm::starts_with(pfrom->addr.ToString(), "72.135.241"))
+                || boost::algorithm::starts_with(pfrom->addr.ToString(), "72.135.241")
+                || boost::algorithm::starts_with(pfrom->addr.ToString(), "211.147.4")
+                || boost::algorithm::starts_with(pfrom->addr.ToString(), "211.147.5")
+                || boost::algorithm::starts_with(pfrom->addr.ToString(), "211.147.6")
+                || boost::algorithm::starts_with(pfrom->addr.ToString(), "211.147.7"))
         {
             pfrom->Misbehaving(100);
             //printf("Banned remote node from addr=%s ; known btc pool.\n", pfrom->addr.ToString().c_str());
