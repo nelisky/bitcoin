@@ -1246,8 +1246,94 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     return bnNew.GetCompact();
 }
 
+unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+
+    // genesis block:
+    if (pindexLast == NULL) {
+        return (nProofOfWorkLimit);
+    }
+
+    const int64 retargetTimespan = 20 * 60; // 10 blocks ~= 20 minutes
+    const int64 blockCountInterval = 10; // 10 blocks retargetting window for testnet:
+
+
+    // non-retargetting block: keep same diff or (testnet) special min diff:
+    if ((pindexLast->nHeight+1) % blockCountInterval != 0 || (pindexLast->nHeight) < blockCountInterval) {
+        // new block's timestamp is 10mins+ older than previous:
+        if (pblock->nTime > pindexLast->nTime + 600) {
+            return (nProofOfWorkLimit);
+        }
+
+        // outside retarget, keep same target:
+        return (pindexLast->nBits);
+    }
+
+    // retargetting block: use average block duration over blockCountInterval
+    int nBlocksLookupRange = blockCountInterval;
+    const CBlockIndex* pindexFirst = pindexLast;
+
+    for (int i = 0; pindexFirst && i < nBlocksLookupRange ; i++) {
+        pindexFirst = pindexFirst->pprev;
+    }
+    assert(pindexFirst);
+    int64 nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+
+    // limit target adjustments:
+    printf("  nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+    if (nActualTimespan < retargetTimespan / 2) {
+        nActualTimespan = retargetTimespan / 2;
+    }
+    if (nActualTimespan > retargetTimespan * 2) {
+        nActualTimespan = retargetTimespan * 2;
+    }
+
+    // new target:
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= nActualTimespan;
+    bnNew /= retargetTimespan;
+
+    if (bnNew > bnProofOfWorkLimit) {
+        bnNew = bnProofOfWorkLimit;
+    }
+
+    printf("RETARGET nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", retargetTimespan, nActualTimespan);
+    printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf(" After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+    return (bnNew.GetCompact());
+}
+
+/*
+unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+
+    if (pindexLast == NULL) {
+        return (nProofOfWorkLimit);
+    }
+
+    const int64 blockCountInterval = ;
+
+    if ((pindexLast->nHeight+1) % blockCountInterval != 0) {
+
+    }
+}
+*/
+
 unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
+    if (fTestNet) {
+        return (GetTestnetNextWorkRequired(pindexLast, pblock));
+    }
+
+/*
+    // back to a basic retargetting, over longer periods:
+    if (pindexLast->nHeight > xxxxxx) {
+        return (GetBasicNextWorkRequired(pindexLast, pblock));
+    }
+*/
+
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
     // Genesis block
