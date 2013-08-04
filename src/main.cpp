@@ -1094,6 +1094,36 @@ unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
     return bnResult.GetCompact();
 }
 
+/**
+ * @brief Average block duration over (up to) given block count.
+ * @return int64 -1 on error/malformed input average block duration otherwise.
+ */
+int64 GetAveragedBlockDuration(const CBlockIndex *blkIdx, int64 blockCount) {
+    if (blkIdx == NULL || blockCount == 0) {
+        return (-1);
+    }
+
+    const CBlockIndex *curBlk = blkIdx;
+    int i = 1;
+    for (i=1 ; blkIdx && i<=blockCount ; i++) {
+        if (blkIdx->pprev == NULL) {
+            break;
+        }
+        if (blkIdx->pprev->nHeight == 0) {
+            if (i>1) { i--; }
+            break;
+        }
+        blkIdx = blkIdx->pprev;
+    }
+
+    return ( (curBlk->GetBlockTime() - blkIdx->GetBlockTime()) / i );
+}
+
+/**
+ * @brief soon (Aug 2013) to be deprecated filter supposed to eliminate malicious ntime manipulations.
+ * @details instead of using a larger blocks window to get effective hashrate, this used only the last two blocks, leading to this :(
+ * @note obviously kept active for integrity while client redownloads earlier blocks.
+ */
 unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
     int64 block_durations[2160];
     float alpha = 0.09; // closer to 1.0 = faster response to new values
@@ -1107,16 +1137,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     if (pindexLast == NULL)
         return nProofOfWorkLimit;
 
-    // If last block was found more than 20mins ago:
-    // (have to be greater than the max accepted time delta ; 15mins)
-    // then allow mining of a min-difficulty block for testnet,
-    // and a lower diff otherwise.
-    //
-    // this way, if one would artificially increase block nTime to its max value,
-    // we'd still take the 5mins periods without block before allowing a one-shot
-    // diff decrase, later keeping the block time used for ema computation.
-    // (disabled after block 175000)
-    //
     if (pblock->nTime > pindexLast->nTime + perBlockTargetTimespan*10) {
         if (fTestNet) {
             printf("TESTNET: allowing min-difficulty mining.\n");
@@ -1174,10 +1194,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
         }
 
         if (block_durations[2159 - i] < 0 && pindexLast->nHeight > 104290) {
-            // attempts at increasing ntime to its max value,
-            // currently eliminated by averaging, but with low net speed,
-            // this could finally alter the averaged diff badly when chained.
-            // one may still chain them with enough hashpower, but this is 51% .. no glory here
             block_durations[2159 - i] = perBlockTargetTimespan;
         }
         if (fTestNet) {
@@ -1187,7 +1203,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     }
 
     // compute exponential moving average block duration:
-    // TODO in case of testnet reset, ensure those 2160 blocks exists :p
     for (int i=0; i<2160 ; i++) {
         accumulator = (alpha * block_durations[i]) + (1 - alpha) * accumulator;
 
@@ -1246,7 +1261,72 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     return bnNew.GetCompact();
 }
 
+/**
+ * @brief separate testnet retargetting.
+ * @details this is testnet, made to change every now and then.
+ */
 unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+
+    if (pindexLast == NULL)
+        return nProofOfWorkLimit;
+
+    // testnet only:
+    if (pblock) {
+        if (pblock->nTime > pindexLast->nTime + 900) {
+            printf("TESTNETRETARGET long block, reset to diff 1\n");
+            return (nProofOfWorkLimit);
+        }
+    }
+
+    const int64 perBlockTargetTimespan = 120;
+
+    // 10 times shorter windows on testnet
+    // this allows ntime manipulations, but livenet does not.
+    int64 nLongTimespan = GetAveragedBlockDuration(pindexLast, 144);
+    if (nLongTimespan <= 0) {
+        nLongTimespan = 0.9 * perBlockTargetTimespan;
+    }
+    int64 nMedTimespan = GetAveragedBlockDuration(pindexLast, 36);
+    if (nMedTimespan <= 0) {
+        nMedTimespan = 0.9 * perBlockTargetTimespan;
+    }
+    int64 nShortTimespan = GetAveragedBlockDuration(pindexLast, 12);
+    if (nShortTimespan <= 0) {
+        nShortTimespan = nLongTimespan;
+    }
+    int64 avgTimespan = (nLongTimespan + nMedTimespan + nShortTimespan) / 3;
+
+    printf(
+        "TESTNETRETARGET height=%d, long=%"PRI64d" med=%"PRI64d" short=%"PRI64d" avg=%"PRI64d"\n",
+        pindexLast->nHeight,
+        nLongTimespan, nMedTimespan, nShortTimespan, avgTimespan
+    );
+
+    printf("TESTNETRETARGET unbound avgTimespan=%"PRI64d"\n", avgTimespan);
+
+    if (avgTimespan < perBlockTargetTimespan * 0.99) {
+        avgTimespan = perBlockTargetTimespan * 0.99;
+    }
+    if (avgTimespan > perBlockTargetTimespan * 1.01) {
+        avgTimespan = perBlockTargetTimespan * 1.01;
+    }
+
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= avgTimespan;
+    bnNew /= perBlockTargetTimespan;
+
+    if (bnNew > bnProofOfWorkLimit)
+        bnNew = bnProofOfWorkLimit;
+
+    printf("TESTNETRETARGET targetTimespan=%"PRI64d" avgTimespan=%"PRI64d"\n", perBlockTargetTimespan, avgTimespan);
+    printf("TESTNETRETARGET Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("TESTNETRETARGET  After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+    return (bnNew.GetCompact());
+
+/*
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
     // genesis block:
@@ -1303,9 +1383,14 @@ unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, co
     printf(" After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
     return (bnNew.GetCompact());
+*/
 }
 
-/*
+/**
+ * @brief target required by next block.
+ * @details measures block duration over last 1440, 360 and 120 blocks, target change limited to 1%
+ * @note no more need to use a filter to minimize any ntime manipulation.
+ */
 unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
@@ -1313,13 +1398,60 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
         return (nProofOfWorkLimit);
     }
 
-    const int64 blockCountInterval = ;
+    const int64 perBlockTargetTimespan = 120;
 
-    if ((pindexLast->nHeight+1) % blockCountInterval != 0) {
-
+    int64 nLongTimespan = GetAveragedBlockDuration(pindexLast, 1440);
+    if (nLongTimespan <= 0) {
+        nLongTimespan = 0.9 * perBlockTargetTimespan;
     }
+    int64 nMedTimespan = GetAveragedBlockDuration(pindexLast, 360);
+    if (nMedTimespan <= 0) {
+        nMedTimespan = 0.9 * perBlockTargetTimespan;
+    }
+    int64 nShortTimespan = GetAveragedBlockDuration(pindexLast, 120);
+    if (nShortTimespan <= 0) {
+        nShortTimespan = nLongTimespan;
+    }
+    int64 avgTimespan = (nLongTimespan + nMedTimespan + nShortTimespan) / 3;
+
+    printf(
+        "BASICRETARGET height=%d, long=%"PRI64d" med=%"PRI64d" short=%"PRI64d" avg=%"PRI64d"\n",
+        pindexLast->nHeight,
+        nLongTimespan, nMedTimespan, nShortTimespan, avgTimespan
+    );
+
+    printf("BASICRETARGET unbound avgTimespan=%"PRI64d"\n", avgTimespan);
+
+    if (avgTimespan < perBlockTargetTimespan * 0.99) {
+        avgTimespan = perBlockTargetTimespan * 0.99;
+    }
+    if (avgTimespan > perBlockTargetTimespan * 1.01) {
+        avgTimespan = perBlockTargetTimespan * 1.01;
+    }
+
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= avgTimespan;
+    bnNew /= perBlockTargetTimespan;
+
+    // disable this dangerous limit after a while:
+    if (pindexLast->nHeight < 205000) {
+        CBigNum fiveThousandsLimit;
+        fiveThousandsLimit.SetCompact(0x1b0c7898);
+        if (bnNew > fiveThousandsLimit) {
+            bnNew = fiveThousandsLimit;
+        }
+    }
+
+    if (bnNew > bnProofOfWorkLimit)
+        bnNew = bnProofOfWorkLimit;
+
+    printf("BASICRETARGET targetTimespan=%"PRI64d" avgTimespan=%"PRI64d"\n", perBlockTargetTimespan, avgTimespan);
+    printf("BASICRETARGET Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("BASICRETARGET  After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+    return (bnNew.GetCompact());
 }
-*/
 
 unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
@@ -1333,6 +1465,11 @@ unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
         return (GetBasicNextWorkRequired(pindexLast, pblock));
     }
 */
+
+    // logging/tests:
+    //if (pindexLast->nHeight > 175500) {
+    //    GetBasicNextWorkRequired(pindexLast, pblock);
+    //}
 
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
@@ -1350,25 +1487,6 @@ unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
     // Only change once per interval
     if ((pindexLast->nHeight+1) % nInterval != 0)
     {
-        /*
-        // Special difficulty rule for testnet:
-        if (fTestNet)
-        {
-            // If the new block's timestamp is more than 2* 10 minutes
-            // then allow mining of a min-difficulty block.
-            if (pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
-                return nProofOfWorkLimit;
-            else
-            {
-                // Return the last non-special-min-difficulty-rules-block
-                const CBlockIndex* pindex = pindexLast;
-                while (pindex->pprev && pindex->nHeight % nInterval != 0 && pindex->nBits == nProofOfWorkLimit)
-                    pindex = pindex->pprev;
-                return pindex->nBits;
-            }
-        }
-        */
-
         return pindexLast->nBits;
     }
 
