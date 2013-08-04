@@ -1316,7 +1316,7 @@ unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, co
         bnNew = bnProofOfWorkLimit;
     }
 
-    printf("RETARGET nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", retargetTimespan, nActualTimespan);
+    printf("RETARGET height=%d nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", pindexLast->nHeight, retargetTimespan, nActualTimespan);
     printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
     printf(" After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
@@ -1338,7 +1338,7 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 
     // retarget window: 2880 blocks (4 days)
     const int64 retargetTimespan = 24 * 3600 * 4; // 4 days
-    const int64 blockCountInterval = 2880; // 10 blocks retargetting window for testnet
+    const int64 blockCountInterval = 2880; // 2880 blocks ~= 4 days
 
     // non-retargetting block: keep same diff or (testnet) special min diff:
     if ((pindexLast->nHeight+1) % blockCountInterval != 0 || (pindexLast->nHeight) < blockCountInterval) {
