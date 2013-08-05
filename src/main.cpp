@@ -1288,7 +1288,7 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
 
     int64 blockrange_durations[120];
     float alpha = 0.06; // closer to 1.0 = faster response to new values
-    float accumulator = 120;
+    float accumulator = blockRangeAwaitedDuration;
 
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
     if (pindexLast == NULL) {
@@ -1317,7 +1317,7 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
         pindexFirst = pindexFirst->pprev;
     }
 
-    // blockrange durations averaging:
+    // blockrange durations filtering:
     for (int i=0; i<120 ; i++) {
         accumulator = (alpha * blockrange_durations[i]) + (1 - alpha) * accumulator;
 
