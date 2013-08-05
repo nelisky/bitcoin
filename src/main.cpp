@@ -1311,7 +1311,7 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
         blockrange_durations[119 - i] = GetBlockRangeDuration(pindexFirst, lookBackBlocksCount);
 
         if (blockrange_durations[119 - i] <= 0) {
-            blockrange_durations[119 - i] = 0.99 * perBlockTargetTimespan;
+            blockrange_durations[119 - i] = 0.99 * blockRangeAwaitedDuration;
         }
 
         pindexFirst = pindexFirst->pprev;
