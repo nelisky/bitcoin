@@ -1206,7 +1206,7 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     for (int i=0; i<2160 ; i++) {
         accumulator = (alpha * block_durations[i]) + (1 - alpha) * accumulator;
 
-        if (fTestNet) {
+        if (1 || fTestNet) {
             CBlockIndex *blk = FindBlockByHeight((int) pindexLast->nHeight - (2159 - i));
             if (blk) {
                 // csv-like logging ; grep/sed 'EMA424242:' for easy plotting
