@@ -1262,6 +1262,93 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
 }
 
 /**
+ * @brief last per-block retargetting attempt, for testnet.
+ */
+unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    int64 block_durations[120];
+    float alpha = 0.06; // closer to 1.0 = faster response to new values
+    float accumulator = 120;
+    const int64 perBlockTargetTimespan = 120; // two mins between blocks
+    int64 lookBackBlocksCount = 90; // number of blocks in the past to use when measuring durations
+
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+    if (pindexLast == NULL) {
+        return nProofOfWorkLimit;
+    }
+
+    // testnet special rule: 2+ hours blocks will reset target to diff=1:
+    if (pblock->nTime > pindexLast->nTime + 7200) {
+        return (nProofOfWorkLimit);
+    }
+
+    // collect last 120 blocks capped durations, measured on lookBackBlocksCount blocks
+    const CBlockIndex* pindexFirst = pindexLast;
+    for (int i = 0; i < 120 ; i++) {
+        if (pindexFirst == NULL) {
+            // first 120 blocks
+            block_durations[119 - i] = perBlockTargetTimespan * 0.9;
+            continue;
+        }
+
+        block_durations[119 - i] = GetAveragedBlockDuration(pindexFirst, lookBackBlocksCount);
+        if (block_durations[119 - i] < 0) {
+            block_durations[119 - i] = 0.99 * perBlockTargetTimespan;
+        }
+
+        if (block_durations[119 - i] > (1.1 * perBlockTargetTimespan) ) {
+            block_durations[119 - i] = 1.1 * perBlockTargetTimespan;
+        }
+
+        if ((block_durations[119 - i] >= 0) && (block_durations[119 - i] < (perBlockTargetTimespan * 0.9)) ) {
+            block_durations[119 - i] = perBlockTargetTimespan * 0.9;
+        }
+
+        pindexFirst = pindexFirst->pprev;
+    }
+
+    // compute exponential moving average block duration:
+    for (int i=0; i<120 ; i++) {
+        accumulator = (alpha * block_durations[i]) + (1 - alpha) * accumulator;
+
+            // optional logging:
+            if (pindexLast->nHeight > 120) {
+                CBlockIndex *blk = FindBlockByHeight((int) pindexLast->nHeight - (119 - i));
+                if (blk) {
+                    // csv-like logging ; grep/sed 'EMA424242:' for easy plotting
+                    // EMA<last_height>:height,diff,duration,ema
+                    printf("EMA%d:%d,%f,%"PRI64d",%f\n", pindexLast->nHeight, pindexLast->nHeight - (119 - i), GetDifficulty(blk), block_durations[i], accumulator);
+                }
+            }
+    }
+
+    int64 nActualTimespan = accumulator;
+
+    // symmetrical, +/- 1% :
+    printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+    if (nActualTimespan < perBlockTargetTimespan * 0.99) {
+        nActualTimespan = perBlockTargetTimespan * 0.99;
+    }
+    if (nActualTimespan > perBlockTargetTimespan * 1.01) {
+        nActualTimespan = perBlockTargetTimespan * 1.01;
+    }
+
+    // Retarget
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= nActualTimespan;
+    bnNew /= perBlockTargetTimespan;
+
+    if (bnNew > bnProofOfWorkLimit)
+        bnNew = bnProofOfWorkLimit;
+
+    printf("nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", perBlockTargetTimespan, nActualTimespan);
+    printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+    return (bnNew.GetCompact());
+}
+
+/**
  * @brief separate testnet retargetting.
  * @details this is testnet, made to change every now and then.
  */
@@ -1385,7 +1472,8 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
     if (fTestNet) {
-        return (GetTestnetNextWorkRequired(pindexLast, pblock));
+        //return (GetTestnetNextWorkRequired(pindexLast, pblock));
+        return (GetTestnetEmaNextWorkRequired(pindexLast, pblock));
     }
 
 /*
