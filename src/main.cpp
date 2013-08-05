@@ -1463,11 +1463,11 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan * 0.834) {
-        nActualTimespan = retargetTimespan * 0.834;
+    if (nActualTimespan < retargetTimespan * 0.9166) {
+        nActualTimespan = retargetTimespan * 0.9166;
     }
-    if (nActualTimespan > retargetTimespan * 1.166) {
-        nActualTimespan = retargetTimespan * 1.166;
+    if (nActualTimespan > retargetTimespan * 1.0833) {
+        nActualTimespan = retargetTimespan * 1.0833;
     }
 
     // new target:
