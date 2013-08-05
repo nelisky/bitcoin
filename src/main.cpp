@@ -1287,7 +1287,8 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
     int64       blockRangeAwaitedDuration   = lookBackBlocksCount * perBlockTargetTimespan;
 
     int64 blockrange_durations[120];
-    float alpha = 0.06; // closer to 1.0 = faster response to new values
+    //float alpha = 0.06; // closer to 1.0 = faster response to new values
+    float alpha = 0.3;
     float accumulator = blockRangeAwaitedDuration;
 
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
@@ -1361,9 +1362,10 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
 
 /**
  * @brief separate testnet retargetting.
- * @details this is testnet, made to change every now and then.
+ * @details retargets every X blocks with timings from last Y blocks
+ * @note this is testnet, made to change every now and then.
  */
-unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
     // genesis block:
@@ -1371,13 +1373,17 @@ unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, co
         return (nProofOfWorkLimit);
     }
 
-    const int64 retargetTimespan = 20 * 60; // 10 blocks ~= 20 minutes
-    const int64 blockCountInterval = 10; // 10 blocks retargetting window for testnet
+    // testnet uses 20x times less blocks than livenet:
+    const int64 retargetBlockCountInterval = 9; // retarget every 9 blocks (180 for livechain)
+    const int64 lookupBlockCount = 108; // past blocks to use for timing (2160 for livenet)
+
+    const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
+    const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval;
 
     // non-retargetting block: keep same diff or (testnet) special min diff:
-    if ((pindexLast->nHeight+1) % blockCountInterval != 0 || (pindexLast->nHeight) < blockCountInterval) {
-        // new block's timestamp is 10mins+ older than previous:
-        if (pblock->nTime > pindexLast->nTime + 600) {
+    if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
+        // testnet special rule: new block's timestamp is 20mins+ older than previous
+        if (pblock->nTime > pindexLast->nTime + 1200) {
             return (nProofOfWorkLimit);
         }
 
@@ -1386,22 +1392,22 @@ unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, co
     }
 
     // retargetting block:
-    int nBlocksLookupRange = blockCountInterval;
     const CBlockIndex* pindexFirst = pindexLast;
-
-    for (int i = 0; pindexFirst && i < nBlocksLookupRange ; i++) {
+    for (int i = 0; pindexFirst && i < lookupBlockCount ; i++) {
         pindexFirst = pindexFirst->pprev;
     }
     assert(pindexFirst);
+
     int64 nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    nActualTimespan = nActualTimespan / retargetVsInspectRatio;
 
     // limit target adjustments:
-    printf("  nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan / 2) {
-        nActualTimespan = retargetTimespan / 2;
+    printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+    if (nActualTimespan < retargetTimespan * 0.834) {
+        nActualTimespan = retargetTimespan * 0.834;
     }
-    if (nActualTimespan > retargetTimespan * 2) {
-        nActualTimespan = retargetTimespan * 2;
+    if (nActualTimespan > retargetTimespan * 1.166) {
+        nActualTimespan = retargetTimespan * 1.166;
     }
 
     // new target:
@@ -1415,8 +1421,8 @@ unsigned int static GetTestnetNextWorkRequired(const CBlockIndex* pindexLast, co
     }
 
     printf("RETARGET height=%d nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", pindexLast->nHeight, retargetTimespan, nActualTimespan);
-    printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
-    printf(" After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+    printf("RETARGET Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("RETARGET After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
     return (bnNew.GetCompact());
 }
@@ -1434,33 +1440,34 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
         return (nProofOfWorkLimit);
     }
 
-    // retarget window: 2880 blocks (4 days)
-    const int64 retargetTimespan = 24 * 3600 * 4; // 4 days
-    const int64 blockCountInterval = 2880; // 2880 blocks ~= 4 days
+    const int64 retargetBlockCountInterval = 180; // retarget every 180 blocks
+    const int64 lookupBlockCount = 2160; // past blocks to use for timing
+    const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
+    const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval; // currently 12
 
     // non-retargetting block: keep same diff or (testnet) special min diff:
-    if ((pindexLast->nHeight+1) % blockCountInterval != 0 || (pindexLast->nHeight) < blockCountInterval) {
+    if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
         // outside retarget, keep same target:
         return (pindexLast->nBits);
     }
 
-    // retargetting block: use time elapsed over blockCountInterval blocks
-    int nBlocksLookupRange = blockCountInterval;
+    // retargetting block:
     const CBlockIndex* pindexFirst = pindexLast;
 
-    for (int i = 0; pindexFirst && i < nBlocksLookupRange ; i++) {
+    for (int i = 0; pindexFirst && i < lookupBlockCount ; i++) {
         pindexFirst = pindexFirst->pprev;
     }
     assert(pindexFirst);
     int64 nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    nActualTimespan = nActualTimespan / retargetVsInspectRatio;
 
     // limit target adjustments:
-    printf("  nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan / 2) {
-        nActualTimespan = retargetTimespan / 2;
+    printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+    if (nActualTimespan < retargetTimespan * 0.834) {
+        nActualTimespan = retargetTimespan * 0.834;
     }
-    if (nActualTimespan > retargetTimespan * 2) {
-        nActualTimespan = retargetTimespan * 2;
+    if (nActualTimespan > retargetTimespan * 1.166) {
+        nActualTimespan = retargetTimespan * 1.166;
     }
 
     // new target:
@@ -1473,9 +1480,9 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
         bnNew = bnProofOfWorkLimit;
     }
 
-    printf("RETARGET nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", retargetTimespan, nActualTimespan);
-    printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
-    printf(" After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+    printf("RETARGET height=%d nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", pindexLast->nHeight, retargetTimespan, nActualTimespan);
+    printf("RETARGET Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("RETARGET After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
     return (bnNew.GetCompact());
 }
@@ -1483,8 +1490,7 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
     if (fTestNet) {
-        //return (GetTestnetNextWorkRequired(pindexLast, pblock));
-        return (GetTestnetEmaNextWorkRequired(pindexLast, pblock));
+        return (GetTestnetBasicNextWorkRequired(pindexLast, pblock));
     }
 
 /*
@@ -1493,11 +1499,6 @@ unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
         return (GetBasicNextWorkRequired(pindexLast, pblock));
     }
 */
-
-    // logging/tests:
-    //if (pindexLast->nHeight > 175500) {
-    //    GetBasicNextWorkRequired(pindexLast, pblock);
-    //}
 
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
