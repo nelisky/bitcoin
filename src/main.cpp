@@ -1120,6 +1120,23 @@ int64 GetAveragedBlockDuration(const CBlockIndex *blkIdx, int64 blockCount) {
 }
 
 /**
+ * @brief time (seconds) between given block and givenblock-blockCount
+ */
+int64 GetBlockRangeDuration(const CBlockIndex *blkIdx, int64 blockCount) {
+    if (blkIdx == NULL || blockCount == 0) {
+        return (-1);
+    }
+
+    const CBlockIndex *curBlk = blkIdx;
+    for (int i = 0; blkIdx && i < blockCount ; i++) {
+        blkIdx = blkIdx->pprev;
+    }
+    assert(blkIdx);
+
+    return ( curBlk->GetBlockTime() - blkIdx->GetBlockTime() );
+}
+
+/**
  * @brief soon (Aug 2013) to be deprecated filter supposed to eliminate malicious ntime manipulations.
  * @details instead of using a larger blocks window to get effective hashrate, this used only the last two blocks, leading to this :(
  * @note obviously kept active for integrity while client redownloads earlier blocks.
@@ -1265,15 +1282,22 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
  * @brief last per-block retargetting attempt, for testnet.
  */
 unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
-    int64 block_durations[120];
+    const int64 perBlockTargetTimespan      = 120; // two mins between blocks
+    int64       lookBackBlocksCount         = 90; // number of blocks in the past to use when measuring durations
+    int64       blockRangeAwaitedDuration   = lookBackBlocksCount * perBlockTargetTimespan;
+
+    int64 blockrange_durations[120];
     float alpha = 0.06; // closer to 1.0 = faster response to new values
     float accumulator = 120;
-    const int64 perBlockTargetTimespan = 120; // two mins between blocks
-    int64 lookBackBlocksCount = 90; // number of blocks in the past to use when measuring durations
 
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
     if (pindexLast == NULL) {
         return nProofOfWorkLimit;
+    }
+
+    // testnet blockchain start:
+    if (pindexLast->nHeight < lookBackBlocksCount+121) {
+        return (nProofOfWorkLimit);
     }
 
     // testnet special rule: 2+ hours blocks will reset target to diff=1:
@@ -1281,34 +1305,21 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
         return (nProofOfWorkLimit);
     }
 
-    // collect last 120 blocks capped durations, measured on lookBackBlocksCount blocks
+    // collect time taken to mine lookBackBlocksCount blocks, for last 120 blocks:
     const CBlockIndex* pindexFirst = pindexLast;
     for (int i = 0; i < 120 ; i++) {
-        if (pindexFirst == NULL) {
-            // first 120 blocks
-            block_durations[119 - i] = perBlockTargetTimespan * 0.9;
-            continue;
-        }
+        blockrange_durations[119 - i] = GetBlockRangeDuration(pindexFirst, lookBackBlocksCount);
 
-        block_durations[119 - i] = GetAveragedBlockDuration(pindexFirst, lookBackBlocksCount);
-        if (block_durations[119 - i] < 0) {
-            block_durations[119 - i] = 0.99 * perBlockTargetTimespan;
-        }
-
-        if (block_durations[119 - i] > (1.1 * perBlockTargetTimespan) ) {
-            block_durations[119 - i] = 1.1 * perBlockTargetTimespan;
-        }
-
-        if ((block_durations[119 - i] >= 0) && (block_durations[119 - i] < (perBlockTargetTimespan * 0.9)) ) {
-            block_durations[119 - i] = perBlockTargetTimespan * 0.9;
+        if (blockrange_durations[119 - i] <= 0) {
+            blockrange_durations[119 - i] = 0.99 * perBlockTargetTimespan;
         }
 
         pindexFirst = pindexFirst->pprev;
     }
 
-    // compute exponential moving average block duration:
+    // blockrange durations averaging:
     for (int i=0; i<120 ; i++) {
-        accumulator = (alpha * block_durations[i]) + (1 - alpha) * accumulator;
+        accumulator = (alpha * blockrange_durations[i]) + (1 - alpha) * accumulator;
 
             // optional logging:
             if (pindexLast->nHeight > 120) {
@@ -1316,32 +1327,32 @@ unsigned int static GetTestnetEmaNextWorkRequired(const CBlockIndex* pindexLast,
                 if (blk) {
                     // csv-like logging ; grep/sed 'EMA424242:' for easy plotting
                     // EMA<last_height>:height,diff,duration,ema
-                    printf("EMA%d:%d,%f,%"PRI64d",%f\n", pindexLast->nHeight, pindexLast->nHeight - (119 - i), GetDifficulty(blk), block_durations[i], accumulator);
+                    printf("EMA%d:%d,%f,%"PRI64d",%f\n", pindexLast->nHeight, pindexLast->nHeight - (119 - i), GetDifficulty(blk), blockrange_durations[i], accumulator);
                 }
             }
     }
 
     int64 nActualTimespan = accumulator;
 
-    // symmetrical, +/- 1% :
+    // limit target change:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < perBlockTargetTimespan * 0.99) {
-        nActualTimespan = perBlockTargetTimespan * 0.99;
+    if (nActualTimespan < blockRangeAwaitedDuration * 0.99) {
+        nActualTimespan = blockRangeAwaitedDuration * 0.99;
     }
-    if (nActualTimespan > perBlockTargetTimespan * 1.01) {
-        nActualTimespan = perBlockTargetTimespan * 1.01;
+    if (nActualTimespan > blockRangeAwaitedDuration * 1.01) {
+        nActualTimespan = blockRangeAwaitedDuration * 1.01;
     }
 
     // Retarget
     CBigNum bnNew;
     bnNew.SetCompact(pindexLast->nBits);
     bnNew *= nActualTimespan;
-    bnNew /= perBlockTargetTimespan;
+    bnNew /= blockRangeAwaitedDuration;
 
     if (bnNew > bnProofOfWorkLimit)
         bnNew = bnProofOfWorkLimit;
 
-    printf("nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", perBlockTargetTimespan, nActualTimespan);
+    printf("nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", blockRangeAwaitedDuration, nActualTimespan);
     printf("Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
     printf("After:  %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
 
