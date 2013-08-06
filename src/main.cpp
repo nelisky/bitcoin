@@ -1292,8 +1292,8 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
     }
 
     // testnet uses 20x times less blocks than livenet:
-    const int64 retargetBlockCountInterval = 9; // retarget every 9 blocks (180 for livechain)
-    const int64 lookupBlockCount = 108; // past blocks to use for timing (2160 for livenet)
+    const int64 retargetBlockCountInterval = 10; // retarget every 108 blocks (2160 for livechain)
+    const int64 lookupBlockCount = 10; // past blocks to use for timing (2160 for livenet)
 
     const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
     const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval;
@@ -1328,11 +1328,11 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan * 0.834) {
-        nActualTimespan = retargetTimespan * 0.834;
+    if (nActualTimespan < retargetTimespan / 4) {
+        nActualTimespan = retargetTimespan / 4;
     }
-    if (nActualTimespan > retargetTimespan * 1.166) {
-        nActualTimespan = retargetTimespan * 1.166;
+    if (nActualTimespan > retargetTimespan * 4) {
+        nActualTimespan = retargetTimespan * 4;
     }
 
     // new target:
@@ -1364,7 +1364,7 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
         return (nProofOfWorkLimit);
     }
 
-    const int64 retargetBlockCountInterval = 180; // retarget every 180 blocks
+    const int64 retargetBlockCountInterval = 2160; // retarget every 2160 blocks
     const int64 lookupBlockCount = 2160; // past blocks to use for timing
     const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
     const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval; // currently 12
@@ -1386,11 +1386,11 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan * 0.9166) {
-        nActualTimespan = retargetTimespan * 0.9166;
+    if (nActualTimespan < retargetTimespan / 4) {
+        nActualTimespan = retargetTimespan / 4;
     }
-    if (nActualTimespan > retargetTimespan * 1.0833) {
-        nActualTimespan = retargetTimespan * 1.0833;
+    if (nActualTimespan > retargetTimespan * 4) {
+        nActualTimespan = retargetTimespan * 4;
     }
 
     // new target:
