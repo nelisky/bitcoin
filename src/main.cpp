@@ -1094,6 +1094,53 @@ unsigned int ComputeMinWork(unsigned int nBase, int64 nTime)
     return bnResult.GetCompact();
 }
 
+/**
+ * @brief Average block duration over (up to) given block count.
+ * @return int64 -1 on error/malformed input average block duration otherwise.
+ */
+int64 GetAveragedBlockDuration(const CBlockIndex *blkIdx, int64 blockCount) {
+    if (blkIdx == NULL || blockCount == 0) {
+        return (-1);
+    }
+
+    const CBlockIndex *curBlk = blkIdx;
+    int i = 1;
+    for (i=1 ; blkIdx && i<=blockCount ; i++) {
+        if (blkIdx->pprev == NULL) {
+            break;
+        }
+        if (blkIdx->pprev->nHeight == 0) {
+            if (i>1) { i--; }
+            break;
+        }
+        blkIdx = blkIdx->pprev;
+    }
+
+    return ( (curBlk->GetBlockTime() - blkIdx->GetBlockTime()) / i );
+}
+
+/**
+ * @brief time (seconds) between given block and givenblock-blockCount
+ */
+int64 GetBlockRangeDuration(const CBlockIndex *blkIdx, int64 blockCount) {
+    if (blkIdx == NULL || blockCount == 0) {
+        return (-1);
+    }
+
+    const CBlockIndex *curBlk = blkIdx;
+    for (int i = 0; blkIdx && i < blockCount ; i++) {
+        blkIdx = blkIdx->pprev;
+    }
+    assert(blkIdx);
+
+    return ( curBlk->GetBlockTime() - blkIdx->GetBlockTime() );
+}
+
+/**
+ * @brief soon (Aug 2013) to be deprecated filter supposed to eliminate malicious ntime manipulations.
+ * @details instead of using a larger blocks window to get effective hashrate, this used only the last two blocks, leading to this :(
+ * @note obviously kept active for integrity while client redownloads earlier blocks.
+ */
 unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
     int64 block_durations[2160];
     float alpha = 0.09; // closer to 1.0 = faster response to new values
@@ -1107,16 +1154,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     if (pindexLast == NULL)
         return nProofOfWorkLimit;
 
-    // If last block was found more than 20mins ago:
-    // (have to be greater than the max accepted time delta ; 15mins)
-    // then allow mining of a min-difficulty block for testnet,
-    // and a lower diff otherwise.
-    //
-    // this way, if one would artificially increase block nTime to its max value,
-    // we'd still take the 5mins periods without block before allowing a one-shot
-    // diff decrase, later keeping the block time used for ema computation.
-    // (disabled after block 175000)
-    //
     if (pblock->nTime > pindexLast->nTime + perBlockTargetTimespan*10) {
         if (fTestNet) {
             printf("TESTNET: allowing min-difficulty mining.\n");
@@ -1174,10 +1211,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
         }
 
         if (block_durations[2159 - i] < 0 && pindexLast->nHeight > 104290) {
-            // attempts at increasing ntime to its max value,
-            // currently eliminated by averaging, but with low net speed,
-            // this could finally alter the averaged diff badly when chained.
-            // one may still chain them with enough hashpower, but this is 51% .. no glory here
             block_durations[2159 - i] = perBlockTargetTimespan;
         }
         if (fTestNet) {
@@ -1187,7 +1220,6 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     }
 
     // compute exponential moving average block duration:
-    // TODO in case of testnet reset, ensure those 2160 blocks exists :p
     for (int i=0; i<2160 ; i++) {
         accumulator = (alpha * block_durations[i]) + (1 - alpha) * accumulator;
 
@@ -1246,13 +1278,176 @@ unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const 
     return bnNew.GetCompact();
 }
 
+/**
+ * @brief separate testnet retargetting.
+ * @details retargets every X blocks with timings from last Y blocks
+ * @note this is testnet, made to change every now and then.
+ */
+unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+
+    // genesis block:
+    if (pindexLast == NULL) {
+        return (nProofOfWorkLimit);
+    }
+
+    // testnet uses 20x times less blocks than livenet:
+    const int64 retargetBlockCountInterval = 9; // retarget every 9 blocks (180 for livechain)
+    const int64 lookupBlockCount = 108; // past blocks to use for timing (2160 for livenet)
+
+    const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
+    const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval;
+
+    // non-retargetting block: keep same diff or (testnet) special min diff:
+    if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
+        if (pindexLast->nHeight > 660) {
+            // testnet special rule: new block's timestamp is 2hours+ older than previous
+            if (pblock->nTime > pindexLast->nTime + 7200) {
+                return (nProofOfWorkLimit);
+            }
+        } else {
+            // testnet special rule: new block's timestamp is 20mins+ older than previous
+            if (pblock->nTime > pindexLast->nTime + 1200) {
+                return (nProofOfWorkLimit);
+            }
+        }
+
+        // outside retarget, keep same target:
+        return (pindexLast->nBits);
+    }
+
+    // retargetting block:
+    const CBlockIndex* pindexFirst = pindexLast;
+    for (int i = 0; pindexFirst && i < lookupBlockCount ; i++) {
+        pindexFirst = pindexFirst->pprev;
+    }
+    assert(pindexFirst);
+
+    int64 nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    nActualTimespan = nActualTimespan / retargetVsInspectRatio;
+
+    // limit target adjustments:
+    printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+    if (nActualTimespan < retargetTimespan * 0.834) {
+        nActualTimespan = retargetTimespan * 0.834;
+    }
+    if (nActualTimespan > retargetTimespan * 1.166) {
+        nActualTimespan = retargetTimespan * 1.166;
+    }
+
+    // new target:
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= nActualTimespan;
+    bnNew /= retargetTimespan;
+
+    if (bnNew > bnProofOfWorkLimit) {
+        bnNew = bnProofOfWorkLimit;
+    }
+
+    printf("RETARGET height=%d nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", pindexLast->nHeight, retargetTimespan, nActualTimespan);
+    printf("RETARGET Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("RETARGET  After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+    return (bnNew.GetCompact());
+}
+
+/**
+ * @brief target required by next block.
+ * @details retargets every 180 blocks with timings from last 2160 blocks.
+ */
+unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
+
+    // genesis block:
+    if (pindexLast == NULL) {
+        return (nProofOfWorkLimit);
+    }
+
+    const int64 retargetBlockCountInterval = 180; // retarget every 180 blocks
+    const int64 lookupBlockCount = 2160; // past blocks to use for timing
+    const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
+    const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval; // currently 12
+
+    // non-retargetting block: keep same diff:
+    if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
+        // outside retarget, keep same target:
+        return (pindexLast->nBits);
+    }
+
+    // retargetting block, capture timing over last lookupBlockCount blocks:
+    const CBlockIndex* pindexFirst = pindexLast;
+    for (int i = 0; pindexFirst && i < lookupBlockCount ; i++) {
+        pindexFirst = pindexFirst->pprev;
+    }
+    assert(pindexFirst);
+    int64 nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    nActualTimespan = nActualTimespan / retargetVsInspectRatio;
+
+    // limit target adjustments:
+    printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
+    if (nActualTimespan < retargetTimespan * 0.9166) {
+        nActualTimespan = retargetTimespan * 0.9166;
+    }
+    if (nActualTimespan > retargetTimespan * 1.0833) {
+        nActualTimespan = retargetTimespan * 1.0833;
+    }
+
+    // new target:
+    CBigNum bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= nActualTimespan;
+    bnNew /= retargetTimespan;
+
+    // during the switchover from EMA retargetting to static 180/2160 retargetting:
+    // temporary, low diff limit: 17.4k self deactivating at height 188000
+    if (pindexLast->nHeight < 188000) {
+        CBigNum seventeenThousandsLimit;
+        seventeenThousandsLimit.SetCompact(0x1b03bf8b);
+        if (bnNew > seventeenThousandsLimit) {
+            bnNew = seventeenThousandsLimit;
+        }
+    }
+
+    // temporary, super ugly way to never, ever return diff < 5254,
+    // just in the case something really bad happens
+    // self-deactivate at block 220000
+    if (pindexLast->nHeight < 220000) {
+        CBigNum fiveThousandsLimit;
+        fiveThousandsLimit.SetCompact(0x1b0c7898);
+        if (bnNew > fiveThousandsLimit) {
+            bnNew = fiveThousandsLimit;
+        }
+    }
+
+    // min diff:
+    if (bnNew > bnProofOfWorkLimit) {
+        bnNew = bnProofOfWorkLimit;
+    }
+
+    printf("RETARGET height=%d nTargetTimespan = %"PRI64d" nActualTimespan = %"PRI64d"\n", pindexLast->nHeight, retargetTimespan, nActualTimespan);
+    printf("RETARGET Before: %08x  %s\n", pindexLast->nBits, CBigNum().SetCompact(pindexLast->nBits).getuint256().ToString().c_str());
+    printf("RETARGET  After: %08x  %s\n", bnNew.GetCompact(), bnNew.getuint256().ToString().c_str());
+
+    return (bnNew.GetCompact());
+}
+
 unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock)
 {
+    if (fTestNet) {
+        return (GetTestnetBasicNextWorkRequired(pindexLast, pblock));
+    }
+
     unsigned int nProofOfWorkLimit = bnProofOfWorkLimit.GetCompact();
 
     // Genesis block
     if (pindexLast == NULL)
         return nProofOfWorkLimit;
+
+    // back to a basic retargetting, over longer periods:
+    if (pindexLast->nHeight > 185056) {
+        return (GetBasicNextWorkRequired(pindexLast, pblock));
+    }
 
     if (fTestNet && pindexLast->nHeight > 5182) {
         return (GetEmaNextWorkRequired(pindexLast, pblock));
@@ -1264,25 +1459,6 @@ unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
     // Only change once per interval
     if ((pindexLast->nHeight+1) % nInterval != 0)
     {
-        /*
-        // Special difficulty rule for testnet:
-        if (fTestNet)
-        {
-            // If the new block's timestamp is more than 2* 10 minutes
-            // then allow mining of a min-difficulty block.
-            if (pblock->nTime > pindexLast->nTime + nTargetSpacing*2)
-                return nProofOfWorkLimit;
-            else
-            {
-                // Return the last non-special-min-difficulty-rules-block
-                const CBlockIndex* pindex = pindexLast;
-                while (pindex->pprev && pindex->nHeight % nInterval != 0 && pindex->nBits == nProofOfWorkLimit)
-                    pindex = pindex->pprev;
-                return pindex->nBits;
-            }
-        }
-        */
-
         return pindexLast->nBits;
     }
 
