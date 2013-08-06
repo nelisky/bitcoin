@@ -1,3 +1,14 @@
+terracoin 0.1.3-45 :
+      211.147.4.0 - 211.147.7.255 netblock banned.
+	    blocks 175108 -> 175120 with generation address matching last week
+		attack xfers.
+
+terracoin 0.1.3-44 :
+      difficulty halving removal : cleanup.
+
+terracoin 0.1.3-42 :
+      removed difficulty halving code that could, under specific circumstances, allow difficulty abuse. Effective at block 175000.
+
 terracoin v0.1.3rc4 :
       [checkpoints] minor,cp: multiple checkpoints added.
       [checkpoints] logging,cp: new cp & verbose cp test log output added.
