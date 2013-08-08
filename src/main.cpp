@@ -1399,9 +1399,10 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
     bnNew *= nActualTimespan;
     bnNew /= retargetTimespan;
 
-    // during the switchover from EMA retargetting to static 180/2160 retargetting:
-    // temporary, low diff limit: 17.4k self deactivating at height 188000
-    if (pindexLast->nHeight < 188000) {
+    // during the switchover from EMA retargetting to static 2160 retargetting:
+    // temporary, low diff limit: 17.4k self deactivating at height 182000
+    // (for first retarget only)
+    if (pindexLast->nHeight < 183000) {
         CBigNum seventeenThousandsLimit;
         seventeenThousandsLimit.SetCompact(0x1b03bf8b);
         if (bnNew > seventeenThousandsLimit) {
@@ -1445,7 +1446,7 @@ unsigned int static GetNextWorkRequired(const CBlockIndex* pindexLast, const CBl
         return nProofOfWorkLimit;
 
     // back to a basic retargetting, over longer periods:
-    if (pindexLast->nHeight > 185056) {
+    if (pindexLast->nHeight > 181200) {
         return (GetBasicNextWorkRequired(pindexLast, pblock));
     }
 
