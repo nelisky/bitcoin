@@ -1,9 +1,15 @@
 #!/usr/bin/env python
 #
-# Generate pnSeed[] from Pieter's DNS seeder
+# Generate pnSeed[] from a list of node's ip:port
+# (one per line)
 #
+# could be extracted from logs with something like this:
+# nice egrep 'them=[0-9\.]+\:13333' debug.log | sed -e 's/^.*them=//' | sed -e 's/,.*//' > /tmp/seedstmp.txt
+# cat /tmp/seedstmp.txt | sort | uniq > /tmp/seeds.txt
+#
+# cat /tmp/seeds.txt | python contrib/seeds/makeseeds.py
 
-NSEEDS=600
+NSEEDS=340
 
 import re
 import sys
@@ -13,7 +19,7 @@ def main():
     lines = sys.stdin.readlines()
 
     ips = []
-    pattern = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):8333")
+    pattern = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):13333")
     for line in lines:
         m = pattern.match(line)
         if m is None:
