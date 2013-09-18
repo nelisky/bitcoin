@@ -1291,9 +1291,9 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
         return (nProofOfWorkLimit);
     }
 
-    // testnet uses 20x times less blocks than livenet:
-    const int64 retargetBlockCountInterval = 10; // retarget every 108 blocks (2160 for livechain)
-    const int64 lookupBlockCount = 10; // past blocks to use for timing (2160 for livenet)
+    // testnet uses a smaller retarget window than livenet:
+    const int64 retargetBlockCountInterval = 10; // retarget every 10 blocks (360 for livechain)
+    const int64 lookupBlockCount = 10; // past blocks to use for timing (360 for livenet)
 
     const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
     const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval;
@@ -1301,7 +1301,8 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
     // non-retargetting block: keep same diff or (testnet) special min diff:
     if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
         if (pindexLast->nHeight > 660) {
-            // testnet special rule: new block's timestamp is 2hours+ older than previous
+            // testnet special rule: new block's timestamp is 2hours+ older than previous,
+            // return diff-1 target:
             if (pblock->nTime > pindexLast->nTime + 7200) {
                 return (nProofOfWorkLimit);
             }
@@ -1328,11 +1329,22 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan / 4) {
-        nActualTimespan = retargetTimespan / 4;
-    }
-    if (nActualTimespan > retargetTimespan * 4) {
-        nActualTimespan = retargetTimespan * 4;
+
+    if (pindexLast->nHeight > 1198) {
+        // smaller adjustments limits:
+        if (nActualTimespan < retargetTimespan / 1.25) {
+            nActualTimespan = retargetTimespan / 1.25;
+        }
+        if (nActualTimespan > retargetTimespan * 1.25) {
+            nActualTimespan = retargetTimespan * 1.25;
+        }
+    } else {
+        if (nActualTimespan < retargetTimespan / 4) {
+            nActualTimespan = retargetTimespan / 4;
+        }
+        if (nActualTimespan > retargetTimespan * 4) {
+            nActualTimespan = retargetTimespan * 4;
+        }
     }
 
     // new target:
