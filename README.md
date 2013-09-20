@@ -1,38 +1,48 @@
-Litecoin - a lite version of Bitcoin optimized for CPU mining using scrypt as a proof of work scheme.
- - 2.5 minute block targets
- - subsidy halves in 840k blocks (~4 years)
- - ~84 million total coins
+### Litecoin Reference Client Git Repo
 
-The rest is the same as bitcoin.
- - 50 coins per block
- - 2016 blocks to retarget difficulty
+## Master branches
+The master-\* branches contain the mainline commit history of each currently supported major version of Litecoin.
 
-Development process
-===================
+ master-0.6
 
-Developers work in their own trees, then submit pull requests when
-they think their feature or bug fix is ready.
+ master-0.8
 
-The patch will be accepted if there is broad consensus that it is a
-good thing.  Developers should expect to rework and resubmit patches
-if they don't match the project's coding conventions (see coding.txt)
-or are controversial.
+ master-0.9
 
-The master branch is regularly built and tested, but is not guaranteed
-to be completely stable. Tags are regularly created to indicate new
-official, stable release versions of Litecoin.
+## Archival development history branches
+These are generally old archival branches kept for historical purposes.
 
-Feature branches are created when there are major new features being
-worked on by several people.
+ devhistory-0.5 - previously known as coblee/litecoin-old/master
 
-From time to time a pull request will become outdated. If this occurs, and
-the pull is no longer automatically mergeable; a comment on the pull will
-be used to issue a warning of closure. The pull will be closed 15 days
-after the warning if action is not taken by the author. Pull requests closed
-in this manner will have their corresponding issue labeled 'stagnant'.
+ devhistory-0.8.3.x - dev history of 0.8.x prior to the rebase for official release in master-0.8
 
-Issues with no commits will be given a similar warning, and closed after
-15 days from their last activity. Issues closed in this manner will be 
-labeled 'stale'. 
+ devhistory-0.9.x.x - dev history of 0.9.x will be frozen here when it is rebased into master-0.9
 
-Check out http://forum.litecoin.net/index.php/board,2.0.html for more info about the development.
+## Release Branches
+Generally we keep only release branches that actually diverged from master, where the release was tagged from the branch itself.
+Whenever possible we will try to make gitian builds directly from a GPG signed tag in master-0.\* branch, and we try to avoid
+making releases from side branches.
+
+ ltc-0.6.3
+
+## Experimental/Topic Branches
+Branches here may be created and deleted at any time as they become obsolete or merged into other branches.
+Use the prefix "exp-" to keep them nicely bunch together in branch listings.
+
+ exp-awesomecoin - rapid development, messy branch of next major release.
+
+ exp-btc09backports - Backports of Bitcoin-0.9 commits
+
+ exp-mark10 - Litecoin specific patches from exp-<codename> squashed/cleaned
+
+ exp-mark10b - Combined candidate branch that later becomes master-0.8
+
+ exp-mark10b-cc - 0.8.3.5 with Coin Control
+
+ exp-mark10b-ccsec - 0.8.3.5 with Coin Control and sipa's secp256k1
+
+## Old/Legacy Branches
+Old miscellaneous stuff that we need to keep for some reason is prefixed with "old-"
+so they are grouped together in the branch listing.
+
+ old-electrum-obsolete - might be useful one day if someone decides to modernize Electrum support
