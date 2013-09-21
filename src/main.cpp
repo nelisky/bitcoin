@@ -1142,6 +1142,11 @@ int64 GetBlockRangeDuration(const CBlockIndex *blkIdx, int64 blockCount) {
  * @note obviously kept active for integrity while client redownloads earlier blocks.
  */
 unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    // ugly hack for some 32-bits machines @ block 137162
+    if (pindexLast->nHeight == 137161 && ! fTestNet) {
+        return (0x1b034c51);
+    }
+
     int64 block_durations[2160];
     float alpha = 0.09; // closer to 1.0 = faster response to new values
     if (pindexLast->nHeight > 110322) {
