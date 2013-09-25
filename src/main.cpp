@@ -1381,14 +1381,22 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
         return (nProofOfWorkLimit);
     }
 
-    const int64 retargetBlockCountInterval = 2160; // retarget every 2160 blocks
-    const int64 lookupBlockCount = 2160; // past blocks to use for timing
+    int64 retargetBlockCountInterval;
+    int64 lookupBlockCount;
+    if (pindexLast->nHeight > 192237) {
+        // after block 192240, switch to 540 retarget-window
+        // with 1.25 limits
+        retargetBlockCountInterval = 540; // retarget every 540 blocks
+        lookupBlockCount = 540; // past blocks to use for timing
+    } else {
+        retargetBlockCountInterval = 2160; // retarget every 2160 blocks
+        lookupBlockCount = 2160; // past blocks to use for timing
+    }
     const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
     const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval; // currently 12
 
     // non-retargetting block: keep same diff:
     if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
-        // outside retarget, keep same target:
         return (pindexLast->nBits);
     }
 
@@ -1403,11 +1411,21 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan / 4) {
-        nActualTimespan = retargetTimespan / 4;
-    }
-    if (nActualTimespan > retargetTimespan * 4) {
-        nActualTimespan = retargetTimespan * 4;
+    if (pindexLast->nHeight > 192237) {
+        // at and after block 192240, use 1.25 limits:
+        if (nActualTimespan < retargetTimespan / 1.25) {
+            nActualTimespan = retargetTimespan / 1.25;
+        }
+        if (nActualTimespan > retargetTimespan * 1.25) {
+            nActualTimespan = retargetTimespan * 1.25;
+        }
+    } else {
+        if (nActualTimespan < retargetTimespan / 4) {
+            nActualTimespan = retargetTimespan / 4;
+        }
+        if (nActualTimespan > retargetTimespan * 4) {
+            nActualTimespan = retargetTimespan * 4;
+        }
     }
 
     // new target:
