@@ -16,8 +16,8 @@ using namespace std;
 map<uint256, CAlert> mapAlerts;
 CCriticalSection cs_mapAlerts;
 
-static const char* pszMainKey = "04fc9702847840aaf195de8442ebecedf5b095cdbb9bc716bda9110971b28a49e0ead8564ff0db22209e0374782c093bb899692d524e9d6a6956e7c5ecbcd68284";
-static const char* pszTestKey = "04302390343f91cc401d56d68b123028bf52e5fca1939df127f63c6467cdf9c8e2c14b61104cf817d0b780da337893ecc4aaff1309e536162dabbdb45200ca2b0a";
+static const char* pszMainKey = "04b79d46f177ae69578c2f206be096a22e2de73ad6296ddf9c330faa32b249f63028b039c2cdb7cba0d0b034f66f0c28b8131ec4e6dc9ed67dcedddacdf218f305";
+static const char* pszTestKey = "0415e63deb4a13fc9aa182121fd8b3cc582c205f57dabdf291b71e2c298060cec4f06bc3806485f45f19d07e48c1e1874fbab82ad7b8420866914ee00aeac75291";
 
 void CUnsignedAlert::SetNull()
 {
@@ -144,6 +144,24 @@ bool CAlert::CheckSignature() const
     CKey key;
     if (!key.SetPubKey(ParseHex(fTestNet ? pszTestKey : pszMainKey)))
         return error("CAlert::CheckSignature() : SetPubKey failed");
+
+    if (fTestNet) {
+        printf("pubKey: ");
+        BOOST_FOREACH(unsigned char c, key.GetPubKey().Raw())
+            printf("%02x", c);
+        printf("\n");
+
+        printf("vchSig: ");
+        BOOST_FOREACH(unsigned char c, vchSig)
+            printf("%02x", c);
+        printf("\n");
+
+        printf("vchMsg: ");
+        BOOST_FOREACH(unsigned char c, vchMsg)
+            printf("%02x", c);
+        printf("\n");
+    }
+
     if (!key.Verify(Hash(vchMsg.begin(), vchMsg.end()), vchSig))
         return error("CAlert::CheckSignature() : verify signature failed");
 
