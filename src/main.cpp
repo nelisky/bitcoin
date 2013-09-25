@@ -1142,6 +1142,11 @@ int64 GetBlockRangeDuration(const CBlockIndex *blkIdx, int64 blockCount) {
  * @note obviously kept active for integrity while client redownloads earlier blocks.
  */
 unsigned int static GetEmaNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock) {
+    // ugly hack for some 32-bits machines @ block 137162
+    if (pindexLast->nHeight == 137161 && ! fTestNet) {
+        return (0x1b034c51);
+    }
+
     int64 block_durations[2160];
     float alpha = 0.09; // closer to 1.0 = faster response to new values
     if (pindexLast->nHeight > 110322) {
@@ -1291,9 +1296,9 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
         return (nProofOfWorkLimit);
     }
 
-    // testnet uses 20x times less blocks than livenet:
-    const int64 retargetBlockCountInterval = 10; // retarget every 108 blocks (2160 for livechain)
-    const int64 lookupBlockCount = 10; // past blocks to use for timing (2160 for livenet)
+    // testnet uses a smaller retarget window than livenet:
+    const int64 retargetBlockCountInterval = 10; // retarget every 10 blocks (360 for livechain)
+    const int64 lookupBlockCount = 10; // past blocks to use for timing (360 for livenet)
 
     const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
     const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval;
@@ -1301,7 +1306,8 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
     // non-retargetting block: keep same diff or (testnet) special min diff:
     if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
         if (pindexLast->nHeight > 660) {
-            // testnet special rule: new block's timestamp is 2hours+ older than previous
+            // testnet special rule: new block's timestamp is 2hours+ older than previous,
+            // return diff-1 target:
             if (pblock->nTime > pindexLast->nTime + 7200) {
                 return (nProofOfWorkLimit);
             }
@@ -1328,11 +1334,22 @@ unsigned int static GetTestnetBasicNextWorkRequired(const CBlockIndex* pindexLas
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan / 4) {
-        nActualTimespan = retargetTimespan / 4;
-    }
-    if (nActualTimespan > retargetTimespan * 4) {
-        nActualTimespan = retargetTimespan * 4;
+
+    if (pindexLast->nHeight > 1198) {
+        // smaller adjustments limits:
+        if (nActualTimespan < retargetTimespan / 1.25) {
+            nActualTimespan = retargetTimespan / 1.25;
+        }
+        if (nActualTimespan > retargetTimespan * 1.25) {
+            nActualTimespan = retargetTimespan * 1.25;
+        }
+    } else {
+        if (nActualTimespan < retargetTimespan / 4) {
+            nActualTimespan = retargetTimespan / 4;
+        }
+        if (nActualTimespan > retargetTimespan * 4) {
+            nActualTimespan = retargetTimespan * 4;
+        }
     }
 
     // new target:
@@ -1364,14 +1381,22 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
         return (nProofOfWorkLimit);
     }
 
-    const int64 retargetBlockCountInterval = 2160; // retarget every 2160 blocks
-    const int64 lookupBlockCount = 2160; // past blocks to use for timing
+    int64 retargetBlockCountInterval;
+    int64 lookupBlockCount;
+    if (pindexLast->nHeight > 192237) {
+        // after block 192240, switch to 540 retarget-window
+        // with 1.25 limits
+        retargetBlockCountInterval = 540; // retarget every 540 blocks
+        lookupBlockCount = 540; // past blocks to use for timing
+    } else {
+        retargetBlockCountInterval = 2160; // retarget every 2160 blocks
+        lookupBlockCount = 2160; // past blocks to use for timing
+    }
     const int64 retargetTimespan = 120 * retargetBlockCountInterval; // 2 minutes per block
     const int64 retargetVsInspectRatio = lookupBlockCount / retargetBlockCountInterval; // currently 12
 
     // non-retargetting block: keep same diff:
     if ((pindexLast->nHeight+1) % retargetBlockCountInterval != 0 || (pindexLast->nHeight) < lookupBlockCount) {
-        // outside retarget, keep same target:
         return (pindexLast->nBits);
     }
 
@@ -1386,11 +1411,21 @@ unsigned int static GetBasicNextWorkRequired(const CBlockIndex* pindexLast, cons
 
     // limit target adjustments:
     printf("RETARGET nActualTimespan = %"PRI64d"  before bounds\n", nActualTimespan);
-    if (nActualTimespan < retargetTimespan / 4) {
-        nActualTimespan = retargetTimespan / 4;
-    }
-    if (nActualTimespan > retargetTimespan * 4) {
-        nActualTimespan = retargetTimespan * 4;
+    if (pindexLast->nHeight > 192237) {
+        // at and after block 192240, use 1.25 limits:
+        if (nActualTimespan < retargetTimespan / 1.25) {
+            nActualTimespan = retargetTimespan / 1.25;
+        }
+        if (nActualTimespan > retargetTimespan * 1.25) {
+            nActualTimespan = retargetTimespan * 1.25;
+        }
+    } else {
+        if (nActualTimespan < retargetTimespan / 4) {
+            nActualTimespan = retargetTimespan / 4;
+        }
+        if (nActualTimespan > retargetTimespan * 4) {
+            nActualTimespan = retargetTimespan * 4;
+        }
     }
 
     // new target:
