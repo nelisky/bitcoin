@@ -1,3 +1,8 @@
+terracoin-0.8.0.1 :
+      fixes issue #10 : random blockchain download lockups on 32bits machines (https://github.com/terracoin/terracoin/issues/10)
+      alerts: mainnet keypair update (https://github.com/terracoin/terracoin/issues/4)
+      new versionning system
+
 terracoin 0.1.3-49 :
       minor testnet updates.
 
