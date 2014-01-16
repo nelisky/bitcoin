@@ -1,7 +1,7 @@
 #ifndef MANAGENAMESPAGE_H
 #define MANAGENAMESPAGE_H
 
-#include <QDialog>
+#include <QWidget>
 #include <QSortFilterProxyModel>
 
 namespace Ui {
@@ -36,7 +36,7 @@ private:
 };
 
 /** Page for managing names */
-class ManageNamesPage : public QDialog
+class ManageNamesPage : public QWidget
 {
     Q_OBJECT
 
